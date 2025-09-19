@@ -1,0 +1,123 @@
+image: registry.cern.ch/docker.io/library/python:3.12.5
+
+# Change pip's cache directory to be inside the project directory since we can
+# only cache local items.
+variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+    GIT_SUBMODULE_STRATEGY: recursive
+    PY_VERSION: "3.12" 
+    WIN_VERSION: "64" #64 or 32
+    PY_CMD: "py -%PY_VERSION%-%WIN_VERSION%" 
+    VERSION: "1.0.0"
+  
+# Pip's cache doesn't store the python packages
+# https://pip.pypa.io/en/stable/topics/caching/
+#
+# If you want to also cache the installed packages, you have to install
+# them in a virtualenv and cache it as well.
+cache:
+  paths:
+    - .cache/pip
+    - venv/
+
+before_script:
+  - python --version  # For debugging
+  - pip install --upgrade pip
+  - pip install virtualenv
+  - virtualenv venv
+  - source venv/bin/activate
+  - pip install -r requirement.txt
+#
+stages:
+  - Generate Linux executable
+  - Generate Windows executable
+  - Deploy
+  
+generate_linux_exe:
+  stage: Generate Linux executable
+  script:
+    - apt-get update
+   # - cat /etc/os-release # For debug
+    - pip install pyinstaller
+    - pyi-makespec  --paths="./Source/lib/supadinterface" --noupx --name testCI ./Source/main.py
+    - pyinstaller --clean -y testCI.spec
+    - rm -rf testCI
+    - mkdir testCI
+    - cp -r dist/testCI/* testCI/   
+  after_script:
+    - echo "JOB_LINUX_ID=$CI_JOB_ID" >> job_linux.env
+    - echo "VERSION=$VERSION" >> job_linux.env
+  artifacts:
+    paths:
+      - testCI/
+    name: "testCI_v${VERSION}_linux"
+    reports:
+      dotenv: job_linux.env
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == "gen-exe"
+
+generate_windows_exe:
+
+  stage: Generate Windows executable
+  tags: 
+    - windows
+    - python
+  before_script:
+    - echo "overwrite before_script" # Cache is not needed and can cause miss call if not carefull
+  script:
+    - echo $PY_CMD
+    - Invoke-Expression "$PY_CMD --version"
+    - Invoke-Expression "$PY_CMD -m ensurepip"
+    - Invoke-Expression "$PY_CMD -m pip install --upgrade pip" #get last pip update
+    - Invoke-Expression "$PY_CMD -m venv env" #create a new virtual environment named "env"
+    - .\env\Scripts\activate #activate your virtual environment for Windows only
+    
+    - python -m pip install -r requirement.txt
+    - pip install pyinstaller
+    - pip install --upgrade pyinstaller
+    
+    # Create executable file with pyinstaller
+    - pyi-makespec  --paths="./Source/lib/supadinterface" --noupx --name testCI ./Source/main.py
+    - pyinstaller --clean -y testCI.spec
+    - if (Test-Path "testCI") { Remove-Item -Recurse -Force "testCI" }
+    - New-Item -ItemType Directory -Path "testCI"
+    - Copy-Item -Recurse -Force -Path "dist\testCI\*" -Destination "testCI"    
+    
+  after_script:
+    - echo "JOB_WINDOWS_ID=$CI_JOB_ID" >> job_windows.env
+    - echo "VERSION=$VERSION" >> job_windows.env
+  artifacts:
+    paths:
+      - testCI/
+    name: "testCI_v${VERSION}_windows"
+    reports:
+      dotenv: job_windows.env
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == "gen-exe"
+
+deploy:
+  stage: Deploy
+  before_script:
+    - echo "overwrite before_script"
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  cache: []
+  needs:
+    - job: generate_linux_exe
+      artifacts: true
+    - job: generate_windows_exe
+      artifacts: true
+  script:
+    - echo "create release" # A release is created only if the job’s main script succeeds. 
+  release:
+    description: "testCI release version $VERSION"
+    tag_name: v$VERSION
+    assets:
+      links:
+        - name: "Windows executable"
+          url: "https://gitlab.cern.ch/apc/susofts/interfaces/scripts/testCI/-/jobs/$JOB_WINDOWS_ID/artifacts/download"         
+        - name: "Linux executable"
+          url: "https://gitlab.cern.ch/apc/susofts/interfaces/scripts/testCI/-/jobs/$JOB_LINUX_ID/artifacts/download"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

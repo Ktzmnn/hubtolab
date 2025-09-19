@@ -1,0 +1,3 @@
+[submodule "Source/lib/supadinterface"]
+	path = Source/lib/supadinterface
+	url = https://gitlab.cern.ch/apc/susofts/studies/pythontools/supadinterface.git
