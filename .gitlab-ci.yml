@@ -1,3 +1,4 @@
+# only
 image: registry.cern.ch/docker.io/library/python:3.12.5
 
 # Change pip's cache directory to be inside the project directory since we can
