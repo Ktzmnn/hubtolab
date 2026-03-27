@@ -1,0 +1,18 @@
+{
+  "name": "hubtolab",
+  "version": "1.0.0",
+  "description": "Dummy project used to test mirroring between github and gitlab",
+  "ecosystem": "geodetic-metrology",
+  "category": {
+    "primary": "Open Source workflow",
+    "sub_type": "mirroring"
+  },
+  "alias": "Hub to Lab",
+  "maintainer": {
+    "organization": "Personal",
+    "group": "ktzmnn",
+    "issue_tracker": "https://github.com/Ktzmnn/hubtolab/issues"
+  },
+  "repository": "https://github.com/Ktzmnn/hubtolab",
+  "license": "see LICENSE"
+}
